@@ -3,7 +3,7 @@ pragma experimental ABIEncoderV2;
 
 import "./GovernorMikeInterfaces.sol";
 
-contract GovernorBravoDelegator is GovernorBravoDelegatorStorage, GovernorBravoEvents {
+contract GovernorMikeDelegator is GovernorMikeDelegatorStorage, GovernorMikeEvents {
 	constructor(
 			address timelock_,
 			address comp_,
@@ -34,8 +34,8 @@ contract GovernorBravoDelegator is GovernorBravoDelegatorStorage, GovernorBravoE
      * @param implementation_ The address of the new implementation for delegation
      */
     function _setImplementation(address implementation_) public {
-        require(msg.sender == admin, "GovernorBravoDelegator::_setImplementation: admin only");
-        require(implementation_ != address(0), "GovernorBravoDelegator::_setImplementation: invalid implementation address");
+        require(msg.sender == admin, "GovernorMikeDelegator::_setImplementation: admin only");
+        require(implementation_ != address(0), "GovernorMikeDelegator::_setImplementation: invalid implementation address");
 
         address oldImplementation = implementation;
         implementation = implementation_;
