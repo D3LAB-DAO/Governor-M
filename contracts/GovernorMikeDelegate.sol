@@ -303,8 +303,8 @@ contract GovernorMikeDelegate is
       */
     function castVoteInternal(address voter, uint proposalId, uint8 support) internal returns (uint96) {
         require(state(proposalId) == ProposalState.Active, "GovernorMike::castVoteInternal: voting is closed");
-        require(support <= 2, "GovernorMike::castVoteInternal: invalid vote type");
         Proposal storage proposal = proposals[proposalId];
+        require(support <= proposal.issues.length, "GovernorMike::castVoteInternal: invalid vote type");
         Receipt storage receipt = proposal.receipts[voter];
         require(receipt.hasVoted == false, "GovernorMike::castVoteInternal: voter already voted");
         uint96 votes = comp.getPriorVotes(voter, proposal.startBlock);
