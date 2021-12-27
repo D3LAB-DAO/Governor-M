@@ -76,9 +76,6 @@ contract GovernorMikeDelegate is
     ) public returns (uint) {
         proposalCount++;
         Proposal storage newProposal = proposals[proposalCount];
-
-        // Reject proposals before initiating as Governor
-        require(initialProposalId != 0, "GovernorMike::propose: Governor Mike not active");
         
         for (uint i = 0; i < issues_.length; i++) {
             // Allow addresses above proposal threshold and whitelisted addresses to propose
@@ -90,13 +87,7 @@ contract GovernorMikeDelegate is
             require(issues_[i].targets.length != 0, "GovernorMike::propose: must provide actions");
             require(issues_[i].targets.length <= proposalMaxOperations, "GovernorMike::propose: too many actions");
 
-            newProposal.issues.push(Issue({
-                targets: issues_[i].targets,
-                values: issues_[i].values,
-                signatures: issues_[i].signatures,
-                calldatas: issues_[i].calldatas,
-                description: issues_[i].description
-            }));
+            newProposal.issues.push(issues_[i]);
         }
 
         uint latestProposalId = latestProposalIds[msg.sender];
@@ -191,14 +182,23 @@ contract GovernorMikeDelegate is
     }
 
     /**
-      * @notice Gets actions of a proposal
+      * @notice Gets an issue of a proposal
       * @param proposalId the id of the proposal
       * @param issueNum the number of the issue
-      * @return Targets, values, signatures, and calldatas of the issue actions
+      * @return Targets, values, signatures, calldatas, and description of the issue
       */
-    function getActions(uint proposalId, uint issueNum) external view returns (address[] memory targets, uint[] memory values, string[] memory signatures, bytes[] memory calldatas) {
+    function getIssue(uint proposalId, uint issueNum) external view returns (address[] memory targets, uint[] memory values, string[] memory signatures, bytes[] memory calldatas, string memory description) {
         Issue storage issue = proposals[proposalId].issues[issueNum];
-        return (issue.targets, issue.values, issue.signatures, issue.calldatas);
+        return (issue.targets, issue.values, issue.signatures, issue.calldatas, issue.description);
+    }
+
+    /**
+      * @notice Gets actions of a proposal
+      * @param proposalId the id of the proposal
+      * @return votes of the proposal
+      */
+    function getVotes(uint proposalId) external view returns (uint[] memory) {
+        return proposals[proposalId].votes;
     }
 
     /**
@@ -217,7 +217,7 @@ contract GovernorMikeDelegate is
       * @return Proposal state
       */
     function state(uint proposalId) public view returns (ProposalState) {
-        require(proposalCount >= proposalId && proposalId > initialProposalId, "GovernorMike::state: invalid proposal id");
+        require(proposalCount >= proposalId, "GovernorMike::state: invalid proposal id");
         Proposal storage proposal = proposals[proposalId];
         if (proposal.canceled) {
             return ProposalState.Canceled;

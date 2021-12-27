@@ -47,7 +47,14 @@ Cancels a proposal only if sender is the proposer, or proposer delegates dropped
 
 
 
-### `getActions(uint256 proposalId, uint256 issueNum) → address[] targets, uint256[] values, string[] signatures, bytes[] calldatas` (external)
+### `getIssue(uint256 proposalId, uint256 issueNum) → address[] targets, uint256[] values, string[] signatures, bytes[] calldatas, string description` (external)
+
+Gets an issue of a proposal
+
+
+
+
+### `getVotes(uint256 proposalId) → uint256[]` (external)
 
 Gets actions of a proposal
 
