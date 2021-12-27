@@ -4,7 +4,7 @@ pragma experimental ABIEncoderV2;
 
 contract GovernorMikeEvents {
     /// @notice An event emitted when a new proposal is created
-    event ProposalCreated(uint id, address proposer, address[] targets, uint[] values, string[] signatures, bytes[] calldatas, uint startBlock, uint endBlock, string description);
+    event ProposalCreated(uint id, address proposer, uint startBlock, uint endBlock); // TODO: details
 
     /// @notice An event emitted when a vote has been cast on a proposal
     /// @param voter The address which casted a vote
@@ -95,6 +95,22 @@ contract GovernorMikeDelegateStorageV1 is GovernorMikeDelegatorStorage {
     /// @notice The latest proposal for each proposer
     mapping (address => uint) public latestProposalIds;
 
+    struct Issue {
+        /// @notice `targets`: Target addresses for proposal calls
+        address[] targets;
+
+        /// @notice `values`: Eth values for proposal calls
+        uint[] values;
+        
+        /// @notice `signatures`: Function signatures for proposal calls
+        string[] signatures;
+
+        /// @notice `calldatas`: Calldatas for proposal calls
+        bytes[] calldatas;
+
+        /// @notice `description`: String description of the proposal
+        string description;
+    }
 
     struct Proposal {
         /// @notice Unique id for looking up a proposal
@@ -106,17 +122,8 @@ contract GovernorMikeDelegateStorageV1 is GovernorMikeDelegatorStorage {
         /// @notice The timestamp that the proposal will be available for execution, set once the vote succeeds
         uint eta;
 
-        /// @notice the ordered list of target addresses for calls to be made
-        address[] targets;
-
-        /// @notice The ordered list of values (i.e. msg.value) to be passed to the calls to be made
-        uint[] values;
-
-        /// @notice The ordered list of function signatures to be called
-        string[] signatures;
-
-        /// @notice The ordered list of calldata to be passed to each call
-        bytes[] calldatas;
+        /// @notice The ordered list of issues
+        Issue[] issues;
 
         /// @notice The block at which voting begins: holders must delegate their votes prior to this block
         uint startBlock;
@@ -124,14 +131,8 @@ contract GovernorMikeDelegateStorageV1 is GovernorMikeDelegatorStorage {
         /// @notice The block at which voting ends: votes must be cast prior to this block
         uint endBlock;
 
-        /// @notice Current number of votes in favor of this proposal
-        uint forVotes;
-
-        /// @notice Current number of votes in opposition to this proposal
-        uint againstVotes;
-
-        /// @notice Current number of votes for abstaining for this proposal
-        uint abstainVotes;
+        /// @notice Current number of votes: indexed to issues
+        uint[] votes;
 
         /// @notice Flag marking whether the proposal has been canceled
         bool canceled;

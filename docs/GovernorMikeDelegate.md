@@ -1,4 +1,4 @@
-## `GovernorBravoDelegate`
+## `GovernorMikeDelegate`
 
 
 
@@ -12,9 +12,10 @@ Used to initialize the contract during delegator contructor
 
 
 
-### `propose(address[] targets, uint256[] values, string[] signatures, bytes[] calldatas, string description) → uint256` (public)
+### `propose(struct GovernorMikeDelegateStorageV1.Issue[] issues_) → uint256` (public)
 
-Function used to propose a new proposal. Sender must have delegates above the proposal threshold
+Function used to propose a new proposal with multiple issues.
+Sender must have delegates above the proposal threshold
 
 
 
@@ -46,23 +47,35 @@ Cancels a proposal only if sender is the proposer, or proposer delegates dropped
 
 
 
-### `getActions(uint256 proposalId) → address[] targets, uint256[] values, string[] signatures, bytes[] calldatas` (external)
+### `getActions(uint256 proposalId, uint256 issueNum) → address[] targets, uint256[] values, string[] signatures, bytes[] calldatas` (external)
 
 Gets actions of a proposal
 
 
 
 
-### `getReceipt(uint256 proposalId, address voter) → struct GovernorBravoDelegateStorageV1.Receipt` (external)
+### `getReceipt(uint256 proposalId, address voter) → struct GovernorMikeDelegateStorageV1.Receipt` (external)
 
 Gets the receipt for a voter on a given proposal
 
 
 
 
-### `state(uint256 proposalId) → enum GovernorBravoDelegateStorageV1.ProposalState` (public)
+### `state(uint256 proposalId) → enum GovernorMikeDelegateStorageV1.ProposalState` (public)
 
 Gets the state of a proposal
+
+
+
+
+### `_winnerIssue(uint256 proposalId) → uint256 winnerIssue` (internal)
+
+
+
+
+
+### `_winnerIssueVotes(uint256 proposalId) → uint256 maxVotes` (internal)
+
 
 
 
@@ -136,14 +149,6 @@ Admin function for setting the whitelist expiration as a timestamp for an accoun
 Admin function for setting the whitelistGuardian. WhitelistGuardian can cancel proposals from whitelisted addresses
 
 
-
-
-### `_initiate(address governorAlpha)` (external)
-
-Initiate the GovernorBravo contract
-
-
-Admin only. Sets initial proposal id which initiates the contract, ensuring a continuous proposal id count
 
 
 ### `_setPendingAdmin(address newPendingAdmin)` (external)

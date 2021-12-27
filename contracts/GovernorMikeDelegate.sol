@@ -3,7 +3,10 @@ pragma experimental ABIEncoderV2;
 
 import "./GovernorMikeInterfaces.sol";
 
-contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEvents {
+contract GovernorMikeDelegate is
+    GovernorMikeDelegateStorageV2,
+    GovernorMikeEvents
+{
 
     /// @notice The name of this contract
     string public constant name = "Compound Governor Mike";
@@ -63,22 +66,38 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
     }
 
     /**
-      * @notice Function used to propose a new proposal. Sender must have delegates above the proposal threshold
-      * @param targets Target addresses for proposal calls
-      * @param values Eth values for proposal calls
-      * @param signatures Function signatures for proposal calls
-      * @param calldatas Calldatas for proposal calls
-      * @param description String description of the proposal
+      * @notice Function used to propose a new proposal with multiple issues.
+      * Sender must have delegates above the proposal threshold
+      * @param issues_ Choices
       * @return Proposal id of new proposal
       */
-    function propose(address[] memory targets, uint[] memory values, string[] memory signatures, bytes[] memory calldatas, string memory description) public returns (uint) {
+    function propose(
+        Issue[] memory issues_
+    ) public returns (uint) {
+        proposalCount++;
+        Proposal storage newProposal = proposals[proposalCount];
+
         // Reject proposals before initiating as Governor
         require(initialProposalId != 0, "GovernorMike::propose: Governor Mike not active");
-        // Allow addresses above proposal threshold and whitelisted addresses to propose
-        require(comp.getPriorVotes(msg.sender, sub256(block.number, 1)) > proposalThreshold || isWhitelisted(msg.sender), "GovernorMike::propose: proposer votes below proposal threshold");
-        require(targets.length == values.length && targets.length == signatures.length && targets.length == calldatas.length, "GovernorMike::propose: proposal function information arity mismatch");
-        require(targets.length != 0, "GovernorMike::propose: must provide actions");
-        require(targets.length <= proposalMaxOperations, "GovernorMike::propose: too many actions");
+        
+        for (uint i = 0; i < issues_.length; i++) {
+            // Allow addresses above proposal threshold and whitelisted addresses to propose
+            require(comp.getPriorVotes(msg.sender, sub256(block.number, 1)) > proposalThreshold || isWhitelisted(msg.sender), "GovernorMike::propose: proposer votes below proposal threshold");
+            require(
+                issues_[i].targets.length == issues_[i].values.length && issues_[i].targets.length == issues_[i].signatures.length && issues_[i].targets.length == issues_[i].calldatas.length,
+                "GovernorMike::propose: proposal function information arity mismatch"
+            );
+            require(issues_[i].targets.length != 0, "GovernorMike::propose: must provide actions");
+            require(issues_[i].targets.length <= proposalMaxOperations, "GovernorMike::propose: too many actions");
+
+            newProposal.issues.push(Issue({
+                targets: issues_[i].targets,
+                values: issues_[i].values,
+                signatures: issues_[i].signatures,
+                calldatas: issues_[i].calldatas,
+                description: issues_[i].description
+            }));
+        }
 
         uint latestProposalId = latestProposalIds[msg.sender];
         if (latestProposalId != 0) {
@@ -90,28 +109,19 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
         uint startBlock = add256(block.number, votingDelay);
         uint endBlock = add256(startBlock, votingPeriod);
 
-        proposalCount++;
-        Proposal memory newProposal = Proposal({
-            id: proposalCount,
-            proposer: msg.sender,
-            eta: 0,
-            targets: targets,
-            values: values,
-            signatures: signatures,
-            calldatas: calldatas,
-            startBlock: startBlock,
-            endBlock: endBlock,
-            forVotes: 0,
-            againstVotes: 0,
-            abstainVotes: 0,
-            canceled: false,
-            executed: false
-        });
+        newProposal.id = proposalCount;
+        newProposal.proposer = msg.sender;
+        newProposal.eta = 0;
+        // newProposal.issues = issues_; // above
+        newProposal.startBlock = startBlock;
+        newProposal.endBlock = endBlock;
+        newProposal.votes = new uint[](issues_.length);
+        newProposal.canceled = false;
+        newProposal.executed = false;
 
-        proposals[newProposal.id] = newProposal;
         latestProposalIds[newProposal.proposer] = newProposal.id;
 
-        emit ProposalCreated(newProposal.id, msg.sender, targets, values, signatures, calldatas, startBlock, endBlock, description);
+        emit ProposalCreated(newProposal.id, msg.sender, startBlock, endBlock);
         return newProposal.id;
     }
 
@@ -122,9 +132,10 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
     function queue(uint proposalId) external {
         require(state(proposalId) == ProposalState.Succeeded, "GovernorMike::queue: proposal can only be queued if it is succeeded");
         Proposal storage proposal = proposals[proposalId];
+        Issue storage issue = proposal.issues[_winnerIssue(proposalId)];
         uint eta = add256(block.timestamp, timelock.delay());
-        for (uint i = 0; i < proposal.targets.length; i++) {
-            queueOrRevertInternal(proposal.targets[i], proposal.values[i], proposal.signatures[i], proposal.calldatas[i], eta);
+        for (uint i = 0; i < issue.targets.length; i++) {
+            queueOrRevertInternal(issue.targets[i], issue.values[i], issue.signatures[i], issue.calldatas[i], eta);
         }
         proposal.eta = eta;
         emit ProposalQueued(proposalId, eta);
@@ -142,9 +153,10 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
     function execute(uint proposalId) external payable {
         require(state(proposalId) == ProposalState.Queued, "GovernorMike::execute: proposal can only be executed if it is queued");
         Proposal storage proposal = proposals[proposalId];
+        Issue storage issue = proposal.issues[_winnerIssue(proposalId)];
         proposal.executed = true;
-        for (uint i = 0; i < proposal.targets.length; i++) {
-            timelock.executeTransaction.value(proposal.values[i])(proposal.targets[i], proposal.values[i], proposal.signatures[i], proposal.calldatas[i], proposal.eta);
+        for (uint i = 0; i < issue.targets.length; i++) {
+            timelock.executeTransaction.value(issue.values[i])(issue.targets[i], issue.values[i], issue.signatures[i], issue.calldatas[i], proposal.eta);
         }
         emit ProposalExecuted(proposalId);
     }
@@ -157,6 +169,7 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
         require(state(proposalId) != ProposalState.Executed, "GovernorMike::cancel: cannot cancel executed proposal");
 
         Proposal storage proposal = proposals[proposalId];
+        Issue storage issue = proposal.issues[_winnerIssue(proposalId)];
 
         // Proposer can cancel
         if(msg.sender != proposal.proposer) {
@@ -170,8 +183,8 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
         }
         
         proposal.canceled = true;
-        for (uint i = 0; i < proposal.targets.length; i++) {
-            timelock.cancelTransaction(proposal.targets[i], proposal.values[i], proposal.signatures[i], proposal.calldatas[i], proposal.eta);
+        for (uint i = 0; i < issue.targets.length; i++) {
+            timelock.cancelTransaction(issue.targets[i], issue.values[i], issue.signatures[i], issue.calldatas[i], proposal.eta);
         }
 
         emit ProposalCanceled(proposalId);
@@ -180,11 +193,12 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
     /**
       * @notice Gets actions of a proposal
       * @param proposalId the id of the proposal
-      * @return Targets, values, signatures, and calldatas of the proposal actions
+      * @param issueNum the number of the issue
+      * @return Targets, values, signatures, and calldatas of the issue actions
       */
-    function getActions(uint proposalId) external view returns (address[] memory targets, uint[] memory values, string[] memory signatures, bytes[] memory calldatas) {
-        Proposal storage p = proposals[proposalId];
-        return (p.targets, p.values, p.signatures, p.calldatas);
+    function getActions(uint proposalId, uint issueNum) external view returns (address[] memory targets, uint[] memory values, string[] memory signatures, bytes[] memory calldatas) {
+        Issue storage issue = proposals[proposalId].issues[issueNum];
+        return (issue.targets, issue.values, issue.signatures, issue.calldatas);
     }
 
     /**
@@ -211,7 +225,7 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
             return ProposalState.Pending;
         } else if (block.number <= proposal.endBlock) {
             return ProposalState.Active;
-        } else if (proposal.forVotes <= proposal.againstVotes || proposal.forVotes < quorumVotes) {
+        } else if (_winnerIssueVotes(proposalId) < quorumVotes) { // maxVotes < quorumVotes
             return ProposalState.Defeated;
         } else if (proposal.eta == 0) {
             return ProposalState.Succeeded;
@@ -224,10 +238,34 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
         }
     }
 
+    function _winnerIssue(uint proposalId) internal view returns(uint winnerIssue) {
+        uint[] storage votes = proposals[proposalId].votes;
+        uint maxVotes = 0;
+        for (uint i = 0; i < votes.length; i++) {
+            // TODO: case of equal
+            if (votes[i] > maxVotes) {
+                maxVotes = votes[i];
+                winnerIssue = i;
+            }
+        }
+    }
+
+    function _winnerIssueVotes(uint proposalId) internal view returns(uint maxVotes) {
+        uint[] storage votes = proposals[proposalId].votes;
+        uint winnerIssue = 0;
+        for (uint i = 0; i < votes.length; i++) {
+            // TODO: case of equal
+            if (votes[i] > maxVotes) {
+                maxVotes = votes[i];
+                winnerIssue = i;
+            }
+        }
+    }
+
     /**
       * @notice Cast a vote for a proposal
       * @param proposalId The id of the proposal to vote on
-      * @param support The support value for the vote. 0=against, 1=for, 2=abstain
+      * @param support The id of the issue to vote on
       */
     function castVote(uint proposalId, uint8 support) external {
         emit VoteCast(msg.sender, proposalId, support, castVoteInternal(msg.sender, proposalId, support), "");
@@ -236,7 +274,7 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
     /**
       * @notice Cast a vote for a proposal with a reason
       * @param proposalId The id of the proposal to vote on
-      * @param support The support value for the vote. 0=against, 1=for, 2=abstain
+      * @param support The id of the issue to vote on
       * @param reason The reason given for the vote by the voter
       */
     function castVoteWithReason(uint proposalId, uint8 support, string calldata reason) external {
@@ -260,7 +298,7 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
       * @notice Internal function that caries out voting logic
       * @param voter The voter that is casting their vote
       * @param proposalId The id of the proposal to vote on
-      * @param support The support value for the vote. 0=against, 1=for, 2=abstain
+      * @param support The id of the issue to vote on
       * @return The number of votes cast
       */
     function castVoteInternal(address voter, uint proposalId, uint8 support) internal returns (uint96) {
@@ -271,13 +309,7 @@ contract GovernorMikeDelegate is GovernorMikeDelegateStorageV2, GovernorMikeEven
         require(receipt.hasVoted == false, "GovernorMike::castVoteInternal: voter already voted");
         uint96 votes = comp.getPriorVotes(voter, proposal.startBlock);
 
-        if (support == 0) {
-            proposal.againstVotes = add256(proposal.againstVotes, votes);
-        } else if (support == 1) {
-            proposal.forVotes = add256(proposal.forVotes, votes);
-        } else if (support == 2) {
-            proposal.abstainVotes = add256(proposal.abstainVotes, votes);
-        }
+        proposal.votes[support] = add256(proposal.votes[support], votes);
 
         receipt.hasVoted = true;
         receipt.support = support;

@@ -1,4 +1,4 @@
-## `GovernorBravoEvents`
+## `GovernorMikeEvents`
 
 
 
@@ -6,7 +6,7 @@
 
 
 
-### `ProposalCreated(uint256 id, address proposer, address[] targets, uint256[] values, string[] signatures, bytes[] calldatas, uint256 startBlock, uint256 endBlock, string description)`
+### `ProposalCreated(uint256 id, address proposer, uint256 startBlock, uint256 endBlock)`
 
 An event emitted when a new proposal is created
 
