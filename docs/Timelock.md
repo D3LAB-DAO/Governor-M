@@ -11,7 +11,7 @@
 
 
 
-### `fallback()` (external)
+### `receive()` (external)
 
 
 

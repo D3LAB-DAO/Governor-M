@@ -7,7 +7,7 @@
 
 ### `initialize(address timelock_, address comp_, uint256 votingPeriod_, uint256 votingDelay_, uint256 proposalThreshold_)` (public)
 
-Used to initialize the contract during delegator contructor
+Used to initialize the contract during delegator constructor
 
 
 
@@ -172,23 +172,5 @@ Accepts transfer of admin rights. msg.sender must be pendingAdmin
 
 
 Admin function for pending admin to accept role and update admin
-
-### `add256(uint256 a, uint256 b) → uint256` (internal)
-
-
-
-
-
-### `sub256(uint256 a, uint256 b) → uint256` (internal)
-
-
-
-
-
-### `getChainIdInternal() → uint256` (internal)
-
-
-
-
 
 
