@@ -1,5 +1,6 @@
-pragma solidity ^0.5.16;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: BSD-3-Clause
+
+pragma solidity ^0.8.0;
 
 import "./GovernorMikeInterfaces.sol";
 
@@ -12,7 +13,7 @@ contract GovernorMikeDelegate is
     string public constant name = "Compound Governor Mike";
 
     /// @notice The minimum setable proposal threshold
-    uint public constant MIN_PROPOSAL_THRESHOLD = 50000e18; // 50,000 Comp
+    uint public constant MIN_PROPOSAL_THRESHOLD = 1000e18; // 1,000 Comp
 
     /// @notice The maximum setable proposal threshold
     uint public constant MAX_PROPOSAL_THRESHOLD = 100000e18; //100,000 Comp
@@ -42,14 +43,14 @@ contract GovernorMikeDelegate is
     bytes32 public constant BALLOT_TYPEHASH = keccak256("Ballot(uint256 proposalId,uint8 support)");
 
     /**
-      * @notice Used to initialize the contract during delegator contructor
+      * @notice Used to initialize the contract during delegator constructor
       * @param timelock_ The address of the Timelock
       * @param comp_ The address of the COMP token
       * @param votingPeriod_ The initial voting period
       * @param votingDelay_ The initial voting delay
       * @param proposalThreshold_ The initial proposal threshold
       */
-    function initialize(address timelock_, address comp_, uint votingPeriod_, uint votingDelay_, uint proposalThreshold_) public {
+    function initialize(address timelock_, address comp_, uint votingPeriod_, uint votingDelay_, uint proposalThreshold_) virtual public {
         require(address(timelock) == address(0), "GovernorMike::initialize: can only initialize once");
         require(msg.sender == admin, "GovernorMike::initialize: admin only");
         require(timelock_ != address(0), "GovernorMike::initialize: invalid timelock address");
@@ -63,6 +64,8 @@ contract GovernorMikeDelegate is
         votingPeriod = votingPeriod_;
         votingDelay = votingDelay_;
         proposalThreshold = proposalThreshold_;
+
+        timelock.acceptAdmin();
     }
 
     /**
@@ -79,7 +82,7 @@ contract GovernorMikeDelegate is
         
         for (uint i = 0; i < issues_.length; i++) {
             // Allow addresses above proposal threshold and whitelisted addresses to propose
-            require(comp.getPriorVotes(msg.sender, sub256(block.number, 1)) > proposalThreshold || isWhitelisted(msg.sender), "GovernorMike::propose: proposer votes below proposal threshold");
+            require(comp.getPriorVotes(msg.sender, block.number - 1) > proposalThreshold || isWhitelisted(msg.sender), "GovernorMike::propose: proposer votes below proposal threshold");
             require(
                 issues_[i].targets.length == issues_[i].values.length && issues_[i].targets.length == issues_[i].signatures.length && issues_[i].targets.length == issues_[i].calldatas.length,
                 "GovernorMike::propose: proposal function information arity mismatch"
@@ -97,8 +100,8 @@ contract GovernorMikeDelegate is
           require(proposersLatestProposalState != ProposalState.Pending, "GovernorMike::propose: one live proposal per proposer, found an already pending proposal");
         }
 
-        uint startBlock = add256(block.number, votingDelay);
-        uint endBlock = add256(startBlock, votingPeriod);
+        uint startBlock = block.number + votingDelay;
+        uint endBlock = startBlock + votingPeriod;
 
         newProposal.id = proposalCount;
         newProposal.proposer = msg.sender;
@@ -124,7 +127,7 @@ contract GovernorMikeDelegate is
         require(state(proposalId) == ProposalState.Succeeded, "GovernorMike::queue: proposal can only be queued if it is succeeded");
         Proposal storage proposal = proposals[proposalId];
         Issue storage issue = proposal.issues[_winnerIssue(proposalId)];
-        uint eta = add256(block.timestamp, timelock.delay());
+        uint eta = block.timestamp + timelock.delay();
         for (uint i = 0; i < issue.targets.length; i++) {
             queueOrRevertInternal(issue.targets[i], issue.values[i], issue.signatures[i], issue.calldatas[i], eta);
         }
@@ -147,7 +150,7 @@ contract GovernorMikeDelegate is
         Issue storage issue = proposal.issues[_winnerIssue(proposalId)];
         proposal.executed = true;
         for (uint i = 0; i < issue.targets.length; i++) {
-            timelock.executeTransaction.value(issue.values[i])(issue.targets[i], issue.values[i], issue.signatures[i], issue.calldatas[i], proposal.eta);
+            timelock.executeTransaction{value: issue.values[i]}(issue.targets[i], issue.values[i], issue.signatures[i], issue.calldatas[i], proposal.eta);
         }
         emit ProposalExecuted(proposalId);
     }
@@ -166,10 +169,10 @@ contract GovernorMikeDelegate is
         if(msg.sender != proposal.proposer) {
             // Whitelisted proposers can't be canceled for falling below proposal threshold
             if(isWhitelisted(proposal.proposer)) {
-                require((comp.getPriorVotes(proposal.proposer, sub256(block.number, 1)) < proposalThreshold) && msg.sender == whitelistGuardian, "GovernorMike::cancel: whitelisted proposer");
+                require((comp.getPriorVotes(proposal.proposer, block.number - 1) < proposalThreshold) && msg.sender == whitelistGuardian, "GovernorMike::cancel: whitelisted proposer");
             }
             else {
-                require((comp.getPriorVotes(proposal.proposer, sub256(block.number, 1)) < proposalThreshold), "GovernorMike::cancel: proposer above threshold");
+                require((comp.getPriorVotes(proposal.proposer, block.number - 1) < proposalThreshold), "GovernorMike::cancel: proposer above threshold");
             }
         }
         
@@ -185,7 +188,7 @@ contract GovernorMikeDelegate is
       * @notice Gets an issue of a proposal
       * @param proposalId the id of the proposal
       * @param issueNum the number of the issue
-      * @return Targets, values, signatures, calldatas, and description of the issue
+      * return targets, values, signatures, calldatas, and description of the issue
       */
     function getIssue(uint proposalId, uint issueNum) external view returns (address[] memory targets, uint[] memory values, string[] memory signatures, bytes[] memory calldatas, string memory description) {
         Issue storage issue = proposals[proposalId].issues[issueNum];
@@ -231,7 +234,7 @@ contract GovernorMikeDelegate is
             return ProposalState.Succeeded;
         } else if (proposal.executed) {
             return ProposalState.Executed;
-        } else if (block.timestamp >= add256(proposal.eta, timelock.GRACE_PERIOD())) {
+        } else if (block.timestamp >= proposal.eta + timelock.GRACE_PERIOD()) {
             return ProposalState.Expired;
         } else {
             return ProposalState.Queued;
@@ -286,7 +289,7 @@ contract GovernorMikeDelegate is
       * @dev External function that accepts EIP-712 signatures for voting on proposals.
       */
     function castVoteBySig(uint proposalId, uint8 support, uint8 v, bytes32 r, bytes32 s) external {
-        bytes32 domainSeparator = keccak256(abi.encode(DOMAIN_TYPEHASH, keccak256(bytes(name)), getChainIdInternal(), address(this)));
+        bytes32 domainSeparator = keccak256(abi.encode(DOMAIN_TYPEHASH, keccak256(bytes(name)), block.chainid, address(this)));
         bytes32 structHash = keccak256(abi.encode(BALLOT_TYPEHASH, proposalId, support));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
         address signatory = ecrecover(digest, v, r, s);
@@ -309,7 +312,7 @@ contract GovernorMikeDelegate is
         require(receipt.hasVoted == false, "GovernorMike::castVoteInternal: voter already voted");
         uint96 votes = comp.getPriorVotes(voter, proposal.startBlock);
 
-        proposal.votes[support] = add256(proposal.votes[support], votes);
+        proposal.votes[support] += votes;
 
         receipt.hasVoted = true;
         receipt.support = support;
@@ -324,7 +327,7 @@ contract GovernorMikeDelegate is
      * @return If the account is whitelisted
      */
     function isWhitelisted(address account) public view returns (bool) {
-        return (whitelistAccountExpirations[account] > now);
+        return (whitelistAccountExpirations[account] > block.timestamp);
     }
 
     /**
@@ -430,22 +433,5 @@ contract GovernorMikeDelegate is
 
         emit NewAdmin(oldAdmin, admin);
         emit NewPendingAdmin(oldPendingAdmin, pendingAdmin);
-    }
-
-    function add256(uint256 a, uint256 b) internal pure returns (uint) {
-        uint c = a + b;
-        require(c >= a, "addition overflow");
-        return c;
-    }
-
-    function sub256(uint256 a, uint256 b) internal pure returns (uint) {
-        require(b <= a, "subtraction underflow");
-        return a - b;
-    }
-
-    function getChainIdInternal() internal pure returns (uint) {
-        uint chainId;
-        assembly { chainId := chainid() }
-        return chainId;
     }
 }

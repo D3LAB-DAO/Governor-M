@@ -1,33 +1,46 @@
-pragma solidity ^0.5.16;
-pragma experimental ABIEncoderV2;
+// SPDX-License-Identifier: BSD-3-Clause
+
+pragma solidity ^0.8.0;
 
 import "./GovernorMikeInterfaces.sol";
 
+/**
+ * @title GovernorMikeDelegator
+ * 
+ * References
+ *
+ * - https://github.com/compound-finance/compound-protocol/blob/master/contracts/Governance/GovernorBravoDelegator.sol
+ */
 contract GovernorMikeDelegator is GovernorMikeDelegatorStorage, GovernorMikeEvents {
 	constructor(
-			address timelock_,
-			address comp_,
-			address admin_,
-	        address implementation_,
-	        uint votingPeriod_,
-	        uint votingDelay_,
-            uint proposalThreshold_) public {
+        address timelock_,
+        address comp_,
+        address admin_,
+        address implementation_,
+        uint votingPeriod_,
+        uint votingDelay_,
+        uint proposalThreshold_
+    ) {
 
         // Admin set to msg.sender for initialization
         admin = msg.sender;
 
-        delegateTo(implementation_, abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256)",
-                                                            timelock_,
-                                                            comp_,
-                                                            votingPeriod_,
-                                                            votingDelay_,
-                                                            proposalThreshold_));
+        delegateTo(
+            implementation_,
+            abi.encodeWithSignature(
+                "initialize(address,address,uint256,uint256,uint256)",
+                timelock_,
+                comp_,
+                votingPeriod_,
+                votingDelay_,
+                proposalThreshold_
+            )
+        );
 
         _setImplementation(implementation_);
 
 		admin = admin_;
 	}
-
 
 	/**
      * @notice Called by the admin to update the implementation of the delegator
@@ -53,7 +66,7 @@ contract GovernorMikeDelegator is GovernorMikeDelegatorStorage, GovernorMikeEven
         (bool success, bytes memory returnData) = callee.delegatecall(data);
         assembly {
             if eq(success, 0) {
-                revert(add(returnData, 0x20), returndatasize)
+                revert(add(returnData, 0x20), returndatasize())
             }
         }
     }
@@ -63,17 +76,17 @@ contract GovernorMikeDelegator is GovernorMikeDelegatorStorage, GovernorMikeEven
      * It returns to the external caller whatever the implementation returns
      * or forwards reverts.
      */
-    function () external payable {
+    fallback() external payable {
         // delegate all other functions to current implementation
         (bool success, ) = implementation.delegatecall(msg.data);
 
         assembly {
               let free_mem_ptr := mload(0x40)
-              returndatacopy(free_mem_ptr, 0, returndatasize)
+              returndatacopy(free_mem_ptr, 0, returndatasize())
 
               switch success
-              case 0 { revert(free_mem_ptr, returndatasize) }
-              default { return(free_mem_ptr, returndatasize) }
+              case 0 { revert(free_mem_ptr, returndatasize()) }
+              default { return(free_mem_ptr, returndatasize()) }
         }
     }
 }
